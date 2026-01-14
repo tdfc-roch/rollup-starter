@@ -1,0 +1,20 @@
+{
+  "name": "sov-rollup-setup",
+  "version": "1.0.0",
+  "description": "Setup scripts for Sovereign rollup - generates keys and updates genesis",
+  "type": "module",
+  "scripts": {
+    "generate-keys": "node --experimental-wasm-modules --loader ts-node/esm generate-keys.ts",
+    "add-signer": "node --experimental-wasm-modules --loader ts-node/esm add-signer.ts"
+  },
+  "dependencies": {
+    "@sovereign-sdk/signers": "0.3.0",
+    "@sovereign-sdk/web3": "0.11.1",
+    "ethers": "^6.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}

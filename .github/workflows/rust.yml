@@ -1,0 +1,145 @@
+name: Rust
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  # Relevant docs:
+  # - https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue#how-merge-queues-work
+  # - https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#merge_group
+  merge_group:
+    types: ["checks_requested"]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
+
+jobs:
+  lint:
+    uses: ./.github/workflows/reusable-job.yml
+    with:
+      job-name: "Lint"
+      command: "make lint"
+      setup-zepter: true
+    secrets: inherit
+
+  test:
+    uses: ./.github/workflows/reusable-job.yml
+    with:
+      job-name: "Test"
+      command: "cargo nextest run"
+      setup-sp1: true
+      setup-risc0: true
+      setup-nextest: true
+    secrets: inherit
+
+  build-celestia-sp1:
+    uses: ./.github/workflows/reusable-job.yml
+    with:
+      job-name: "Build Celestia SP1"
+      env-vars: "SKIP_GUEST_BUILD=risc0"
+      command: "cargo build --no-default-features --features celestia_da,sp1"
+      setup-sp1: true
+    secrets: inherit
+
+  build-celestia-risc0:
+    uses: ./.github/workflows/reusable-job.yml
+    with:
+      job-name: "Build Celestia RISC0"
+      env-vars: "SKIP_GUEST_BUILD=sp1"
+      command: "cargo build --no-default-features --features celestia_da,risc0"
+      setup-risc0: true
+    secrets: inherit
+
+  run-readme:
+    if: github.repository == 'Sovereign-Labs/rollup-starter'
+    uses: ./.github/workflows/reusable-job.yml
+    with:
+      job-name: "Run README"
+      env-vars: "SKIP_GUEST_BUILD=1"
+      runner-size: "16x64"
+      command: |
+        bashtestmd --input README.md --output scripts/rollup-starter.sh --tag=test-ci
+        chmod +x scripts/rollup-starter.sh
+        ./scripts/rollup-starter.sh
+    secrets: inherit
+
+  run-readme-external-mock-da:
+    needs: run-readme
+    if: github.repository == 'Sovereign-Labs/rollup-starter'
+    uses: ./.github/workflows/reusable-job.yml
+    with:
+      job-name: "Run README_EXTERNAL_MOCK_DA"
+      env-vars: "SKIP_GUEST_BUILD=1"
+      runner-size: "16x64"
+      command: |
+        bashtestmd --input README_EXTERNAL_MOCK_DA.md --output scripts/rollup-starter-external-da.sh --tag=test-ci
+        chmod +x scripts/rollup-starter-external-da.sh
+        ./scripts/rollup-starter-external-da.sh
+    secrets: inherit
+
+  docker-mock-da:
+    name: "Docker Mock DA"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: make build-docker-mock-da
+
+      - name: Run Docker container in background
+        run: make run-docker-mock-da BACKGROUND=true
+
+      - name: Wait for rollup to be ready
+        run: |
+          echo "Waiting for rollup to start..."
+          for i in {1..30}; do
+            if curl -f http://127.0.0.1:12346/healthcheck 2>/dev/null; then
+              echo "Rollup is ready!"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          # Check if the container is still running
+          if ! docker ps | grep -q rollup-mock-da; then
+            echo "Container failed to start. Logs:"
+            docker logs rollup-mock-da
+            exit 1
+          fi
+
+      - name: Stop Docker container
+        if: always()
+        run: make stop-docker-mock-da
+
+  run-celestia-tutorial:
+    if: github.repository == 'Sovereign-Labs/rollup-starter'
+    uses: ./.github/workflows/reusable-job.yml
+    with:
+      job-name: "Run Celestia Tutorial"
+      env-vars: "SKIP_GUEST_BUILD=1"
+      runner-size: "16x64"
+      command: |
+        bashtestmd --input GETTING_STARTED_WITH_CELESTIA.md --output scripts/rollup-starter-celestia.sh --tag=test-ci
+        chmod +x scripts/rollup-starter-celestia.sh
+        ./scripts/rollup-starter-celestia.sh
+    secrets: inherit
+
+  run-hyperlane-tutorial:
+    if: github.repository == 'Sovereign-Labs/rollup-starter'
+    uses: ./.github/workflows/reusable-job.yml
+    with:
+      job-name: "Run Hyperlane Tutorial"
+      env-vars: "SKIP_GUEST_BUILD=1"
+      runner-size: "16x64"
+      command: |
+        bashtestmd --input GETTING_STARTED_WITH_HYPERLANE.md --output scripts/rollup-starter-hyperlane.sh --tag=test-ci
+        chmod +x scripts/rollup-starter-hyperlane.sh
+        ./scripts/rollup-starter-hyperlane.sh
+    secrets: inherit

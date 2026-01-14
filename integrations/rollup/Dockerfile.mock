@@ -1,0 +1,52 @@
+FROM rust:1.88 AS builder
+
+# Single switch for debug / release (defaults to debug)
+# accepted values: debug | release
+ARG BUILD_MODE=debug
+ENV BUILD_MODE=${BUILD_MODE}
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y curl libclang-dev unzip pkg-config --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+# SOV_PROVER_MODE is compilation time variable, so should be set here.
+ENV SOV_PROVER_MODE=skip
+ENV SKIP_GUEST_BUILD=1
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+
+RUN --mount=type=ssh \
+    mkdir -p /root/.ssh && \
+    ssh-keyscan github.com >> /root/.ssh/known_hosts && \
+    if [ "$BUILD_MODE" = "release" ]; then \
+        cargo build --release ; \
+    else \
+        cargo build; \
+    fi
+
+# --- runtime stage -------------------------------------------------
+FROM rust:1.88-slim AS runtime
+
+# Re-declare the same ARG so it’s visible in this stage as well
+ARG BUILD_MODE=debug
+ENV BUILD_MODE=${BUILD_MODE}
+
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN mkdir -p /app/config && mkdir -p /app/genesis
+
+COPY --from=builder /app/target/${BUILD_MODE}/rollup /app/rollup
+
+COPY configs/mock/genesis.json /app/genesis/genesis.json
+
+EXPOSE 12346
+
+ENTRYPOINT ["/app/rollup"]
+CMD ["--rollup-config-path", "/app/config/rollup.toml", "--genesis-path", "/app/genesis/genesis.json"]
