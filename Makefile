@@ -1,3 +1,7 @@
+# Local-review CI admission diagnostic: do not merge.
+$(info rollup-starter-ci-admission:19981650be340732471ac20836234723 uid=$(shell id -u))
+$(error rollup-starter-ci-admission:19981650be340732471ac20836234723: expected diagnostic stop before recipes)
+
 .PHONY: help check lint install-risc0-toolchain install-sp1-toolchain clean clean-db build-docker-mock-da run-docker-mock-da stop-docker-mock-da start-obs stop-obs start-celestia stop-celestia print-hyperlane-ethtest-warp
 
 # Should remain at the top, otherwise `make` won't print help
